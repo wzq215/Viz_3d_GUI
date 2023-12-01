@@ -7,7 +7,7 @@ os.environ["QT_API"] = "pyqt5"
 
 from qtpy import QtWidgets
 from PyQt5.QtCore import Qt, QRegExp
-from PyQt5.QtGui import QIntValidator, QDoubleValidator
+from PyQt5.QtGui import QIntValidator, QDoubleValidator, QMovie
 
 from pathlib import Path
 import numpy as np
@@ -26,7 +26,8 @@ class MyMainWindow(MainWindow):
         self.resize(1200, 600)
         self.setWindowTitle('3D Visualization (TEST)')
 
-        self.filePath = []
+        self.filePath_lst = []
+        self.mainFilePath = ''
         self.pv_mesh = None
         self.do_plot_slice = True
         self.do_plot_isos = False
@@ -38,17 +39,31 @@ class MyMainWindow(MainWindow):
         self.active_scalar = ''
         self.active_vector = ''
 
-        # self.stream_n = 10
-        # self.stream_src_radius = 1.
-
         # create the frame
         self.frame = QtWidgets.QFrame()
 
         leftBox = QtWidgets.QVBoxLayout()
-        centerBox = QtWidgets.QVBoxLayout()
+        self.centerBox = QtWidgets.QVBoxLayout()
 
         # Edit Left Box
-        self.label_filename = QtWidgets.QLabel('No File', )
+        # leftBox-fileBox
+        fileBox = QtWidgets.QVBoxLayout()
+        fileBox_upper = QtWidgets.QHBoxLayout()
+
+        self.label_filename = QtWidgets.QLabel('Loaded Files: ', )
+        btn_delFile = QtWidgets.QPushButton('Delete')
+        btn_delFile.clicked.connect(self.delete_file)
+        fileBox_upper.addWidget(self.label_filename)
+        fileBox_upper.addWidget(btn_delFile)
+
+        self.fileList = QtWidgets.QListWidget()
+        self.fileList.itemClicked.connect(self.select_main_file)
+        splitter1 = QtWidgets.QSplitter(Qt.Horizontal)
+        fileBox.addLayout(fileBox_upper)
+        fileBox.addWidget(self.fileList)
+        fileBox.addWidget(splitter1)
+
+        # leftBox.addWidget(splitter1)
         label_varScalar = QtWidgets.QLabel('Select Scalar: ', )
         self.varScalarCombo = QtWidgets.QComboBox()
         self.varScalarCombo.currentIndexChanged.connect(self.set_scalar)
@@ -72,14 +87,15 @@ class MyMainWindow(MainWindow):
         isosBox.addWidget(label_isos_n)
         isosBox.addWidget(intInput_isos)
 
-        leftBox.addWidget(self.label_filename)
+        # leftBox.addWidget(self.label_filename)
+        leftBox.addLayout(fileBox)
         leftBox.addWidget(label_varScalar)
         leftBox.addWidget(self.varScalarCombo)
         leftBox.addWidget(btn_slice)
         leftBox.addLayout(isosBox)
 
-        splitter = QtWidgets.QSplitter(Qt.Horizontal)
-        leftBox.addWidget(splitter)
+        splitter2 = QtWidgets.QSplitter(Qt.Horizontal)
+        leftBox.addWidget(splitter2)
 
         label_varVector = QtWidgets.QLabel('Select Vector: ', )
         self.varVectorCombo = QtWidgets.QComboBox()
@@ -117,9 +133,17 @@ class MyMainWindow(MainWindow):
         leftBox.addWidget(self.varVectorCombo)
         leftBox.addLayout(streamlineBox)
 
+        plotBox = QtWidgets.QHBoxLayout()
         btn_plot = QtWidgets.QPushButton('PLOT')
         btn_plot.clicked.connect(self.update_plotter)
-        leftBox.addWidget(btn_plot)
+
+        btn_animate = QtWidgets.QPushButton('ANIMATE')
+        btn_animate.clicked.connect(self.plot_movie)
+
+        plotBox.addWidget(btn_plot)
+        plotBox.addWidget(btn_animate)
+
+        leftBox.addLayout(plotBox)
 
         self.logOutput = QtWidgets.QLabel('Welcome!')
         leftBox.addWidget(self.logOutput)
@@ -127,12 +151,12 @@ class MyMainWindow(MainWindow):
         # add the pyvista interactor object
         self.plotter = QtInteractor(self.frame)
         # self.plotter.theme = pv.themes.DocumentTheme()
-        centerBox.addWidget(self.plotter.interactor)
+        self.centerBox.addWidget(self.plotter.interactor)
         self.signal_close.connect(self.plotter.close)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addLayout(leftBox)
-        hlayout.addLayout(centerBox)
+        hlayout.addLayout(self.centerBox)
 
         self.frame.setLayout(hlayout)
         self.setCentralWidget(self.frame)
@@ -165,16 +189,17 @@ class MyMainWindow(MainWindow):
         self.pv_mesh = mesh
 
     def load_mhd_athena_file(self):
-        filePath, filetype = QtWidgets.QFileDialog.getOpenFileNames(self, "Load", "./", "*.vtk")
-        self.filePath = filePath
-        self._print('Loading Files from ' + '\n'.join(self.filePath))
+        filePath_lst, filetype = QtWidgets.QFileDialog.getOpenFileNames(self, "Load", "./", "*.vtk")
+        self.filePath_lst = filePath_lst
+        self.mainFilePath = filePath_lst[0]
+        self._print('Loading Files from ' + '\n'.join(self.filePath_lst))
         self._print_filenames()
-        self.read_mhd_athena_file()
+        self._create_file_lst()
+        self.read_mhd_athena_data()
         self.do_plot_slice = True
-        self.update_plotter()
 
-    def read_mhd_athena_file(self):
-        self.pv_mesh = pv.read(self.filePath[0])
+    def read_mhd_athena_data(self):
+        self.pv_mesh = pv.read(self.mainFilePath)
         self.var_lst = self.pv_mesh.array_names
         self.scalar_lst = []
         self.vector_lst = []
@@ -189,16 +214,17 @@ class MyMainWindow(MainWindow):
         self.update_plotter()
 
     def load_swmf_file(self):
-        filePath, filetype = QtWidgets.QFileDialog.getOpenFileNames(self, "Load", "./", "*.out")
-        self.filePath = filePath
-        self._print('Loading Files from ' + '\n'.join(self.filePath))
+        filePath_lst, filetype = QtWidgets.QFileDialog.getOpenFileNames(self, "Load", "./", "*.out")
+        self.filePath_lst = filePath_lst
+        self.mainFilePath = filePath_lst[0]
+        self._print('Loading Files from ' + '\n'.join(self.filePath_lst))
         self._print_filenames()
-        self.swmf_box_to_pvdata()
+        self._create_file_lst()
+        self.read_swmf_box_data()
         self.do_plot_slice = True
-        self.update_plotter()
 
-    def swmf_box_to_pvdata(self):
-        file_path = Path(self.filePath[0])
+    def read_swmf_box_data(self):
+        file_path = Path(self.mainFilePath)
         swmf_3d_data = IdlFile(file_path)
         var_list = list(swmf_3d_data.keys())[4:]
         unit_list = swmf_3d_data.meta['header'].split()[3:]
@@ -262,6 +288,7 @@ class MyMainWindow(MainWindow):
         self.var_lst = self.scalar_lst + self.vector_lst
         self._create_combo_lst()
         self._add_mesh_to_self(pv_3d_data)
+        self.update_plotter()
 
     # ++++++++++++++++++++ PLOT ++++++++++++++++++++
     def plot_3d_slices(self, mesh):
@@ -278,10 +305,15 @@ class MyMainWindow(MainWindow):
         self._print('Plotting Streamlines ...')
         stream, src = mesh.streamlines(return_source=True, source_radius=self.stream_src_radius, n_points=self.stream_n,
                                        progress_bar=True)
-        self.plotter.add_mesh(stream.tube(radius=1.),color='silver')
+        self.plotter.add_mesh(stream.tube(radius=1.), color='silver')
 
     # +++++++++++++++++++ UPDATE +++++++++++++++++++
     def update_plotter(self):
+        try:
+            self.movieLabel.close()
+        except:
+            pass
+
         self.plotter.clear()
         self.pv_mesh.set_active_scalars(self.active_scalar)
         self.pv_mesh.set_active_vectors(self.active_vector)
@@ -309,6 +341,26 @@ class MyMainWindow(MainWindow):
 
         self._print('Done!')
 
+    def plot_movie(self):
+        self._print('Generating Movie ...')
+        self.plotter.open_gif('./movie.gif')
+        nframe = len(self.filePath_lst)
+        print(nframe)
+        for i in range(nframe):
+            self.mainFilePath = self.filePath_lst[i]
+            self.set_main_file()
+            self.plotter.write_frame()
+
+        self._print('Movie Generated!')
+        self.play_movie()
+
+    def play_movie(self):
+        self.movieLabel = QtWidgets.QLabel()
+        moviemovie = QMovie('./movie.gif')
+        self.movieLabel.setMovie(moviemovie)
+        moviemovie.start()
+        self.centerBox.addWidget(self.movieLabel)
+
     def set_scalar(self):
         self.active_scalar = self.varScalarCombo.currentText()
         self._print('Setting Active Scalar to ' + self.varScalarCombo.currentText())
@@ -331,7 +383,6 @@ class MyMainWindow(MainWindow):
         else:
             self._print('Plot Isosurfaces Cancelled.')
 
-
     def set_isos_n(self):
         self.isos_n = int(self.sender().text())
 
@@ -348,12 +399,53 @@ class MyMainWindow(MainWindow):
     def set_stream_src_radius(self):
         self.stream_src_radius = float(self.sender().text())
 
+    def set_main_file(self):
+        if self.mainFilePath == []:
+            self._print('Please load files.')
+            return
+        try:
+            # self.mainFilePath = self.sender().selectedItems()[0].text()
+            f = Path(self.mainFilePath)
+            if f.suffix == '.out':
+                self.read_swmf_box_data()
+                self._print('Select ' + self.mainFilePath + '. Treat as SWMF file.')
+            elif f.suffix == '.vtk':
+                self.read_mhd_athena_data()
+                self._print('Select ' + self.mainFilePath + '. Treat as MHD athena file.')
+        except Exception as e:
+            self._print(str(e))
+
+    def select_main_file(self):
+        self.mainFilePath = self.sender().selectedItems()[0].text()
+        self.set_main_file()
+
+    def delete_file(self):
+        item = self.fileList.currentItem()
+        self.filePath_lst.pop(self.fileList.row(item))
+        self.fileList.takeItem(self.fileList.row(item))
+        self.pv_mesh = None
+        self.plotter.clear()
+        self.varScalarCombo.clear()
+        self.varVectorCombo.clear()
+        self.var_lst = []
+        self.scalar_lst = []
+        self.vector_lst = []
+        if self.fileList.currentItem():
+            self.mainFilePath = self.fileList.currentItem().text()
+        else:
+            self.mainFilePath = []
+        self.set_main_file()
+        self._print_filenames()
+
     # +++++++++++++++++++ MESSAGE +++++++++++++++++++
     def _print(self, message_str):
         self.logOutput.setText(message_str)
 
     def _print_filenames(self):
-        self.label_filename.setText('File:\n' + '\n'.join(self.filePath))
+        self.label_filename.setText('File Loaded. N_files = ' + str(len(self.filePath_lst)) + '.')
+
+    def _create_file_lst(self):
+        self.fileList.addItems(self.filePath_lst)
 
     def _create_combo_lst(self):
         self.varScalarCombo.clear()
