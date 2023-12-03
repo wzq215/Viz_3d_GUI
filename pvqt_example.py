@@ -32,12 +32,16 @@ class MyMainWindow(MainWindow):
         self.do_plot_slice = True
         self.do_plot_isos = False
         self.do_plot_streamlines = False
+        self.do_log_scalar = False
 
         self.var_lst = []
         self.scalar_lst = []
         self.vector_lst = []
         self.active_scalar = ''
         self.active_vector = ''
+        self.active_scalar_vmin = 0.
+        self.active_scalar_vmax = 0.
+
 
         # create the frame
         self.frame = QtWidgets.QFrame()
@@ -67,6 +71,10 @@ class MyMainWindow(MainWindow):
         self.varScalarCombo = QtWidgets.QComboBox()
         self.varScalarCombo.currentIndexChanged.connect(self.set_scalar)
 
+        btn_dolog =QtWidgets.QRadioButton('lg(var)')
+        btn_dolog.setChecked(False)
+        btn_dolog.toggled.connect(self.btn_dolog_click)
+
         btn_slice = QtWidgets.QCheckBox('Plot Slices')
         btn_slice.setChecked(True)
         btn_slice.toggled.connect(self.btn_slice_click)
@@ -90,6 +98,7 @@ class MyMainWindow(MainWindow):
         leftBox.addLayout(fileBox)
         leftBox.addWidget(label_varScalar)
         leftBox.addWidget(self.varScalarCombo)
+        leftBox.addWidget(btn_dolog)
         leftBox.addWidget(btn_slice)
         leftBox.addLayout(isosBox)
 
@@ -311,12 +320,16 @@ class MyMainWindow(MainWindow):
     # ++++++++++++++++++++ PLOT ++++++++++++++++++++
     def plot_3d_slices(self, mesh):
         self._print('Plotting Slice ...')
-        self.plotter.add_mesh_slice_orthogonal(mesh)
+        self.plotter.add_mesh_slice_orthogonal(mesh,log_scale=self.do_log_scalar,clim=[self.active_scalar_vmin,self.active_scalar_vmax])
         self.plotter.reset_camera()
 
     def plot_isosurfaces(self, mesh, ):
         self._print('Plotting Isosurfaces ...')
-        isos_mesh = mesh.contour(isosurfaces=self.isos_n, rng=[0., 0.09])
+        if self.do_log_scalar:
+            mesh[self.active_scalar+'_log'] = np.log10(mesh[self.active_scalar])
+            isos_mesh = mesh.contour(scalars=self.active_scalar+'_log', isosurfaces=self.isos_n,rng=[self.active_scalar_vmin,self.active_scalar_vmax])
+        else:
+            isos_mesh = mesh.contour(isosurfaces=self.isos_n,rng=[self.active_scalar_vmin,self.active_scalar_vmax])
         self.plotter.add_mesh(isos_mesh, opacity=0.5)
         # self.plotter.reset_camera()
 
@@ -363,6 +376,10 @@ class MyMainWindow(MainWindow):
 
         self.pv_mesh.set_active_scalars(self.active_scalar)
         self.pv_mesh.set_active_vectors(self.active_vector)
+        self.active_scalar_vmin = np.nanpercentile(self.pv_mesh[self.active_scalar], 5)
+        self.active_scalar_vmax = np.nanpercentile(self.pv_mesh[self.active_scalar], 95)
+        print(self.active_scalar_vmin)
+        print(self.active_scalar_vmax)
 
         if self.do_plot_isos:
             try:
@@ -382,7 +399,9 @@ class MyMainWindow(MainWindow):
             # except Exception as e:
             #     print(str(e))
 
-
+        f = Path(self.mainFilePath)
+        self.tag = f.stem
+        self.plotter.add_text(self.tag)
         self.plotter.show_grid()
 
         self._print('Done!')
@@ -417,6 +436,7 @@ class MyMainWindow(MainWindow):
         self.active_scalar = self.varScalarCombo.currentText()
         self._print('Setting Active Scalar to ' + self.varScalarCombo.currentText())
 
+
     def set_vector(self):
         self.active_vector = self.varVectorCombo.currentText()
         self._print('Setting Active Vector to ' + self.varVectorCombo.currentText())
@@ -444,6 +464,11 @@ class MyMainWindow(MainWindow):
             self._print('Plot Streamlines Checked.')
         else:
             self._print('Plot Streamlines Cancelled.')
+
+    def btn_dolog_click(self):
+        self.do_log_scalar = self.sender().isChecked()
+
+
 
     def set_stream_n(self):
         self.stream_n = int(self.sender().text())
