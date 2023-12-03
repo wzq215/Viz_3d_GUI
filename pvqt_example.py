@@ -41,9 +41,8 @@ class MyMainWindow(MainWindow):
 
         # create the frame
         self.frame = QtWidgets.QFrame()
-
         leftBox = QtWidgets.QVBoxLayout()
-        self.centerBox = QtWidgets.QVBoxLayout()
+
 
         # Edit Left Box
         # leftBox-fileBox
@@ -148,18 +147,24 @@ class MyMainWindow(MainWindow):
         self.logOutput = QtWidgets.QLabel('Welcome!')
         leftBox.addWidget(self.logOutput)
 
+
+        self.centerBox = QtWidgets.QVBoxLayout()
         # add the pyvista interactor object
         self.plotter = QtInteractor(self.frame)
         # self.plotter.theme = pv.themes.DocumentTheme()
         self.centerBox.addWidget(self.plotter.interactor)
         self.signal_close.connect(self.plotter.close)
 
+
+
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addLayout(leftBox)
         hlayout.addLayout(self.centerBox)
-
+        # hlayout.addWidget(self.stackedWidget)
+        #
         self.frame.setLayout(hlayout)
         self.setCentralWidget(self.frame)
+
 
         # simple menu to demo functions
         mainMenu = self.menuBar()
@@ -229,6 +234,9 @@ class MyMainWindow(MainWindow):
         var_list = list(swmf_3d_data.keys())[4:]
         unit_list = swmf_3d_data.meta['header'].split()[3:]
 
+        print(var_list)
+        print(unit_list)
+
         self.scalar_lst = []
         self.vector_lst = []
 
@@ -253,6 +261,7 @@ class MyMainWindow(MainWindow):
             var_tmp_lower = var_list_lower[i]
             # CAUTION: 此处假设了x总是出现在y，z的前面
             if var_tmp_lower[-1] == 'x':
+                print('Find x in '+var_tmp)
                 try:
                     j = var_list_lower.index(var_tmp_lower[:-1] + 'y')
                     k = var_list_lower.index(var_tmp_lower[:-1] + 'z')
@@ -262,7 +271,10 @@ class MyMainWindow(MainWindow):
                     vec_tmp_z_name = var_list[k]
 
                     vec_tmp_name = var_tmp[:-1]
-                    vec_unit_tmp = vec_tmp_name + ' (' + unit_list[i] + ')'
+                    if unit_list:
+                        vec_unit_tmp = vec_tmp_name + ' (' + unit_list[i] + ')'
+                    else:
+                        vec_unit_tmp = vec_tmp_name
 
                     vec_tmp_x = swmf_3d_data[vec_tmp_x_name].ravel('F')
                     vec_tmp_y = swmf_3d_data[vec_tmp_y_name].ravel('F')
@@ -277,11 +289,17 @@ class MyMainWindow(MainWindow):
                     self.vector_lst.append(vec_unit_tmp)
                 except:
                     self._print('Failed to find -y, -z var for ' + var_tmp + ', treat as scalar.')
-                    var_unit_tmp = var_tmp + ' (' + unit_list[i] + ')'
+                    if unit_list:
+                        var_unit_tmp = var_tmp + ' (' + unit_list[i] + ')'
+                    else:
+                        var_unit_tmp = var_tmp
                     pv_3d_data.point_data[var_unit_tmp] = np.array(swmf_3d_data[var_tmp]).ravel('F')
                     self.scalar_lst.append(var_unit_tmp)
             else:
-                var_unit_tmp = var_tmp + ' (' + unit_list[i] + ')'
+                if unit_list:
+                    var_unit_tmp = var_tmp + ' (' + unit_list[i] + ')'
+                else:
+                    var_unit_tmp = var_tmp
                 pv_3d_data.point_data[var_unit_tmp] = np.array(swmf_3d_data[var_tmp]).ravel('F')
                 self.scalar_lst.append(var_unit_tmp)
 
@@ -300,21 +318,49 @@ class MyMainWindow(MainWindow):
         self._print('Plotting Isosurfaces ...')
         isos_mesh = mesh.contour(isosurfaces=self.isos_n, rng=[0., 0.09])
         self.plotter.add_mesh(isos_mesh, opacity=0.5)
+        # self.plotter.reset_camera()
 
     def plot_streamlines(self, mesh):
         self._print('Plotting Streamlines ...')
         stream, src = mesh.streamlines(return_source=True, source_radius=self.stream_src_radius, n_points=self.stream_n,
                                        progress_bar=True)
         self.plotter.add_mesh(stream.tube(radius=1.), color='silver')
+        # self.plotter.reset_camera()
 
     # +++++++++++++++++++ UPDATE +++++++++++++++++++
     def update_plotter(self):
-        try:
-            self.movieLabel.close()
-        except:
-            pass
+        # self.stackedWidget.setCurrentIndex(0)
+        # try:
+        #     self.centerBox.removeWidget(self.movieLabel)
+        #     # self.movieLabel.close()
+        #     self.plotter = QtInteractor(self.frame)
+        #     self.centerBox.addWidget(self.plotter.interactor)
+        #
+        # except Exception as e:
+        #     self._print(str(e))
+        #     pass
+        print(self.plotter.interactor)
+        # self.plotter = QtInteractor(self.frame)
+        # self.stackedWidget.addWidget(self.plotter.interactor)
+
+        # self.plotter.show()
 
         self.plotter.clear()
+        try:
+            self.centerBox.removeWidget(self.movieLabel)
+            self.movieLabel.deleteLater()
+        except:
+            print('NOTHING TO BE DELETED')
+            pass
+
+        try:
+            self.plotter.add_axes()
+        except:
+            self.plotter = QtInteractor(self.frame)
+            self.centerBox.addWidget(self.plotter.interactor)
+            self.plotter.add_axes()
+
+
         self.pv_mesh.set_active_scalars(self.active_scalar)
         self.pv_mesh.set_active_vectors(self.active_vector)
 
@@ -322,27 +368,30 @@ class MyMainWindow(MainWindow):
             try:
                 self.plot_isosurfaces(self.pv_mesh)
             except Exception as e:
-                self._print(str(e))
+                print(str(e))
 
         if self.do_plot_streamlines:
             try:
                 self.plot_streamlines(self.pv_mesh)
             except Exception as e:
-                self._print(str(e))
+                print(str(e))
 
         if self.do_plot_slice:
-            try:
-                self.plot_3d_slices(self.pv_mesh)
-            except Exception as e:
-                self._print(str(e))
+            # try:
+            self.plot_3d_slices(self.pv_mesh)
+            # except Exception as e:
+            #     print(str(e))
 
-        self.plotter.add_axes()
+
         self.plotter.show_grid()
 
         self._print('Done!')
 
     def plot_movie(self):
+
         self._print('Generating Movie ...')
+        # if Path('./movie.gif').exists():
+        #     Path('./movie.gif').unlink()
         self.plotter.open_gif('./movie.gif')
         nframe = len(self.filePath_lst)
         print(nframe)
@@ -350,16 +399,19 @@ class MyMainWindow(MainWindow):
             self.mainFilePath = self.filePath_lst[i]
             self.set_main_file()
             self.plotter.write_frame()
-
+        self.plotter.close()
+        # self.plotter.deleteLater()
         self._print('Movie Generated!')
         self.play_movie()
 
     def play_movie(self):
+        # self.stackedWidget.setCurrentIndex(1)
         self.movieLabel = QtWidgets.QLabel()
         moviemovie = QMovie('./movie.gif')
         self.movieLabel.setMovie(moviemovie)
         moviemovie.start()
         self.centerBox.addWidget(self.movieLabel)
+        self._print('Movie Started!')
 
     def set_scalar(self):
         self.active_scalar = self.varScalarCombo.currentText()
