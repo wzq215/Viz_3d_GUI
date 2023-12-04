@@ -24,7 +24,7 @@ class MyMainWindow(MainWindow):
         QtWidgets.QMainWindow.__init__(self, parent)
 
         self.resize(1200, 600)
-        self.setWindowTitle('3D Visualization (TEST)')
+        self.setWindowTitle('3D Visualization App Created by PKU Heliosphere')
 
         self.filePath_lst = []
         self.mainFilePath = ''
@@ -337,7 +337,8 @@ class MyMainWindow(MainWindow):
         self._print('Plotting Streamlines ...')
         stream, src = mesh.streamlines(return_source=True, source_radius=self.stream_src_radius, n_points=self.stream_n,
                                        progress_bar=True)
-        self.plotter.add_mesh(stream.tube(radius=1.), color='silver')
+        # streamline_radius = np.nanmax(mesh.points[0])/100
+        self.plotter.add_mesh(stream.tube(radius=0.1), color='silver')
         # self.plotter.reset_camera()
 
     # +++++++++++++++++++ UPDATE +++++++++++++++++++
@@ -376,7 +377,7 @@ class MyMainWindow(MainWindow):
 
         self.pv_mesh.set_active_scalars(self.active_scalar)
         self.pv_mesh.set_active_vectors(self.active_vector)
-        self.active_scalar_vmin = np.nanpercentile(self.pv_mesh[self.active_scalar], 5)
+        self.active_scalar_vmin = np.nanpercentile(self.pv_mesh[self.active_scalar], 10)
         self.active_scalar_vmax = np.nanpercentile(self.pv_mesh[self.active_scalar], 95)
         print(self.active_scalar_vmin)
         print(self.active_scalar_vmax)
